@@ -57,6 +57,7 @@ GitHub Actions를 통해 자동 배포를 수행하며, Terraform으로 AWS 인�
 ├── docker-compose.yml
 ├── nginx.conf
 └── README.md
+```
 
 ## Troubleshooting
 
