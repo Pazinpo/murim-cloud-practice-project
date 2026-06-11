@@ -1,73 +1,67 @@
-# 1. 어느 클라우드에 지을 것인가? (AWS 서울 리전)
+# 1. Provider (AWS 서울 리전)
 provider "aws" {
   region = "ap-northeast-2"
 }
 
-# 2. 무엇을 지을 것인가? (murim의 가상 영토 VPC 생성)
+# 2. VPC
 resource "aws_vpc" "murim_vpc" {
   cidr_block = "10.0.0.0/16"
-  
   tags = {
     Name = "Murim-Cloud-VPC"
   }
 }
 
-
-# 3. 영토 안의 '구역(Subnet)' 나누기
+# 3. Public Subnet
 resource "aws_subnet" "public_subnet" {
-  vpc_id                  = aws_vpc.murim_vpc.id  # 아까 만든 VPC의 ID를 자동으로 끌어옴
-  cidr_block              = "10.0.1.0/24"         # 10.0.0.0/16 영토 안의 더 작은 구역
-  availability_zone       = "ap-northeast-2a"     # 서울의 a구역 데이터센터 사용
-  map_public_ip_on_launch = true                  # 이 구역에 지어지는 집(서버)은 외부 주소(공인 IP)를 받음
-
+  vpc_id                  = aws_vpc.murim_vpc.id
+  cidr_block              = "10.0.1.0/24"
+  availability_zone       = "ap-northeast-2a"
+  map_public_ip_on_launch = true
   tags = {
     Name = "Murim-Public-Subnet"
   }
 }
 
-# 4. 외부 세계와 통하는 '대문(Internet Gateway)' 달기
+# 4. Internet Gateway
 resource "aws_internet_gateway" "murim_igw" {
   vpc_id = aws_vpc.murim_vpc.id
-
   tags = {
     Name = "Murim-IGW"
   }
 }
 
-# 5. 인터넷으로 나가는 길 안내판(Route Table) 만들기
+# 5. Route Table
 resource "aws_route_table" "public_rt" {
-   vpc_id = aws_vpc.murim_vpc.id
-
-   route {
-	cidr_block = "0.0.0.0/0"
-	gateway_id = aws_internet_gateway.murim_igw.id
-   }
-
-   tags = {
-	Name = "Murim-Public-RT"
-   }
+  vpc_id = aws_vpc.murim_vpc.id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.murim_igw.id
+  }
+  tags = {
+    Name = "Murim-Public-RT"
+  }
 }
 
-# 6. 안내판을 구역(Subnet)에 세우기 (연결)
-resource "aws_route_table_association" "public_rt_assoc"{
-	subnet_id	= aws_subnet.public_subnet.id
-	route_table_id	= aws_route_table.public_rt.id
+# 6. Route Table Association
+resource "aws_route_table_association" "public_rt_assoc" {
+  subnet_id      = aws_subnet.public_subnet.id
+  route_table_id = aws_route_table.public_rt.id
 }
 
-# 7. 보안그룹 설정(Security Group)
+# 7. Security Group
 resource "aws_security_group" "murim_sg" {
-  name        = "murim-sg"
-  vpc_id      = aws_vpc.murim_vpc.id
+  name   = "murim-sg"
+  vpc_id = aws_vpc.murim_vpc.id
 
-  # SSH (22번 포트): 대협이 터미널로 접속할 길
+  # SSH (22) - 본인 IP만
   ingress {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["183.102.82.167/32"]
   }
 
-  # HTTP (80번 포트): 웹사이트 접속용
+  # HTTP (80) - 웹 서비스 공개
   ingress {
     from_port   = 80
     to_port     = 80
@@ -75,8 +69,7 @@ resource "aws_security_group" "murim_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # 🔥 3. [수정/추가] Nginx 포트 (8085번): 실제 서비스가 돌아가는 문!
-  # 8080번을 8085로 바꾸거나, 8085를 새로 추가하세요.
+  # Nginx (8085) - 웹 서비스 공개
   ingress {
     from_port   = 8085
     to_port     = 8085
@@ -84,23 +77,38 @@ resource "aws_security_group" "murim_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # 🚀 4. [추가] MariaDB (3306번): HeidiSQL 등으로 DB 직접 보고 싶을 때
+  # MariaDB (3306) - 본인 IP만
   ingress {
     from_port   = 3306
     to_port     = 3306
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # 보안을 위해 대협의 IP만 넣는게 좋지만, 일단은 이렇게!
+    cidr_blocks = ["183.102.82.167/32"]
   }
 
-  # App (8080번 포트): 우리 스프링 부트 앱용
+  # Grafana (3000) - 본인 IP만
   ingress {
-    from_port   = 8080
-    to_port     = 8080
+    from_port   = 3000
+    to_port     = 3000
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["183.102.82.167/32"]
   }
 
-  # 밖으로 나가는 트래픽 (전부 허용)
+  # Prometheus (9090) - 본인 IP만
+  ingress {
+    from_port   = 9090
+    to_port     = 9090
+    protocol    = "tcp"
+    cidr_blocks = ["183.102.82.167/32"]
+  }
+
+  # cAdvisor (8081) - 본인 IP만
+  ingress {
+    from_port   = 8081
+    to_port     = 8081
+    protocol    = "tcp"
+    cidr_blocks = ["183.102.82.167/32"]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -113,35 +121,48 @@ resource "aws_security_group" "murim_sg" {
   }
 }
 
-# 8. 진짜 서버(EC2 Instance) 세우기
+# 8. EC2 Instance
 resource "aws_instance" "murim_server" {
-  ami           = "ami-040c33c6a51fd5d96" # Ubuntu 24.04 (서울 리전 기준)
-  instance_type = "t3.micro"
-
+  ami                    = "ami-040c33c6a51fd5d96"
+  instance_type          = "t3.micro"
   subnet_id              = aws_subnet.public_subnet.id
   vpc_security_group_ids = [aws_security_group.murim_sg.id]
-  # 어제 만든 키 페어 이름
-  key_name = "murim-key"
+  key_name               = "murim-key"
 
-  user_data = <<-EOF
+  root_block_device {
+    volume_size = 30
+    volume_type = "gp3"
+  }
+
+  user_data = <<-USERDATA
 #!/bin/bash
-# 1. 패키지 목록 업데이트
-sudo apt-get update -y
+set -e
+apt-get update -y
+apt-get install -y docker.io docker-compose-v2 git
+systemctl start docker
+systemctl enable docker
+usermod -aG docker ubuntu
 
-# 2. 도커와 도커 컴포즈를 한 번에 설치 (중복 제거)
-sudo apt-get install -y docker.io docker-compose
+# 스왑 2GB (micro 메모리 대응)
+fallocate -l 2G /swapfile
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
-# 3. 도커 서비스 기동 및 자동 실행 설정
-sudo systemctl start docker
-sudo systemctl enable docker
+# 프로젝트 클론 & .env 생성 & 기동
+cd /home/ubuntu
+git clone https://github.com/Pazinpo/murim-cloud-practice-project.git
+cd murim-cloud-practice-project
+cat > .env <<'ENVEOF'
+MYSQL_ROOT_PASSWORD=1234
+DB_PASSWORD=1234
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=admin1234
+ENVEOF
+docker compose up -d
+USERDATA
 
-# 4. ubuntu 유저에게 도커 권한 부여
-# (이 주문이 있어야 나중에 sudo 없이도 도커를 부릴 수 있습니다)
-sudo usermod -aG docker ubuntu
-EOF
-
-
-  #[핵심] 주문서가 바뀌면 서버를 아예 새로 지으라는 명령
   user_data_replace_on_change = true
 
   tags = {
@@ -149,7 +170,7 @@ EOF
   }
 }
 
-# 9. 완성 후 서버의 주소(IP)를 화면에 바로 띄워라!
+# 9. Output
 output "server_public_ip" {
   value = aws_instance.murim_server.public_ip
 }
