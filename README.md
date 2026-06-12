@@ -15,6 +15,7 @@ Prometheus·Grafana로 서버 및 컨테이너 메트릭을 수집·시각화하
 - 웹 / 애플리케이션 / 데이터 계층 분리 운영
 - Prometheus·Grafana·node-exporter·cAdvisor 기반 모니터링/관제 환경 구축
 - 호스트(서버) 및 컨테이너 단위 메트릭 수집·시각화
+- 부하 테스트를 통한 관측성(Observability) 검증
 - GitHub Actions 기반 자동 배포 파이프라인 구축
 - Terraform을 활용한 AWS 인프라 코드화
 - 트러블슈팅 경험 문서화를 통한 운영 관점 강화
@@ -92,10 +93,32 @@ Grafana의 데이터소스 모두 \`localhost\`가 아닌 서비스명(\`prometh
 
 ![Container CPU Panel](./docs/06_grafana_container_cpu.png)
 
-## Deployment
+## Load Testing / Observability 검증
 
-Terraform으로 인프라를 프로비저닝하고, EC2 \`user_data\`로 초기 배포까지 자동화한 뒤,
-이후 변경 사항은 GitHub Actions로 지속 배포(CI/CD)되도록 구성했습니다.
+모니터링이 "설치"에 그치지 않고 실제 부하 상황을 관측하는지 검증하기 위해,
+부하 발생 도구로 시스템·웹 트래픽 부하를 주고 메트릭이 실시간으로 반응하는지 확인했습니다.
+
+- **CPU 부하**: \`stress-ng --cpu 4\` 로 호스트 CPU에 부하를 주고, node-exporter 메트릭에서 CPU 사용률이 즉시 상승하는 것을 관측
+- **웹 트래픽 부하**: \`ab\`(ApacheBench)로 Nginx(8085)에 초당 약 9,000 요청(동시 200 × 4 프로세스)을 발생시켜 컨테이너 네트워크 반응 관측
+
+**호스트 CPU 반응 — 부하 발생 구간에서 CPU 사용률이 80% 가까이 상승**
+
+![Load CPU](./docs/11_load_cpu.png)
+
+**컨테이너 네트워크 반응 — murim-web 컨테이너의 송신(Tx) 트래픽이 약 55MB/s까지 상승**
+
+![Load Web Container Network](./docs/12_load_web_container_network.png)
+
+> localhost로 발생한 트래픽은 루프백(lo) 인터페이스로 흐르므로 호스트의 물리 인터페이스(eth0) 메트릭에는 잡히지 않고,
+> 컨테이너 레벨(cAdvisor)에서 관측해야 함을 확인했습니다.
+
+## Security
+
+- 민감정보(DB·Grafana 비밀번호)를 \`.env\`로 분리하고 \`.gitignore\`로 형상관리에서 제외하여, 공개 저장소에서도 노출되지 않도록 처리
+- DB(3306) 및 모니터링 포트(3000/9090/8081)는 본인 IP(\`/32\`)로만 접근 제한 — 최소 권한 원칙 적용
+- SSH(22)는 CI/CD 자동 배포를 위해 개방하되, 비밀번호 인증을 사용하지 않고 키 기반 인증만 허용
+
+## Deployment
 
 1. **인프라 프로비저닝** — \`terraform apply\`로 VPC, Subnet, IGW, Route Table, Security Group, EC2 생성
 2. **서버 초기화** — EC2 \`user_data\`가 Docker 설치, 2GB 스왑 설정, 프로젝트 clone, \`.env\` 생성, \`docker compose up -d\`까지 자동 수행
@@ -108,12 +131,6 @@ Terraform으로 인프라를 프로비저닝하고, EC2 \`user_data\`로 초기 
 **EC2에서 실제 동작하는 Grafana 대시보드 (퍼블릭 IP 접속)**
 
 ![Grafana on EC2](./docs/09_grafana_on_ec2.png)
-
-## Security
-
-- 민감정보(DB·Grafana 비밀번호)를 \`.env\`로 분리하고 \`.gitignore\`로 형상관리에서 제외하여, 공개 저장소에서도 노출되지 않도록 처리
-- DB(3306) 및 모니터링 포트(3000/9090/8081)는 본인 IP(\`/32\`)로만 접근 제한 — 최소 권한 원칙 적용
-- SSH(22)는 CI/CD 자동 배포를 위해 개방하되, 비밀번호 인증을 사용하지 않고 키 기반 인증만 허용
 
 ## Access Points
 
@@ -163,3 +180,8 @@ Terraform으로 인프라를 프로비저닝하고, EC2 \`user_data\`로 초기 
 - **증상:** Actions 배포 시 \`dial tcp :22: i/o timeout\` 발생
 - **원인:** SSH(22) ingress를 본인 IP로만 제한하여 GitHub Actions 러너의 IP가 차단됨
 - **해결:** SSH 22번을 개방하되 키 기반 인증으로 보안을 확보. DB·모니터링 포트(3306/3000/9090/8081)는 본인 IP 제한을 유지하여 최소 권한 원칙을 함께 적용
+
+### 8. Monitoring — localhost 트래픽이 호스트 네트워크 메트릭에 미관측
+- **증상:** 웹 부하 테스트 시 node-exporter의 네트워크(eth0) 그래프가 평평하게 유지됨
+- **원인:** localhost로 발생한 트래픽은 루프백(lo) 인터페이스로 흐르므로 물리 인터페이스(eth0) 메트릭에는 잡히지 않음
+- **해결:** 컨테이너 네트워크는 cAdvisor에서 관측해야 함을 확인하고, murim-web 컨테이너의 Tx 트래픽(약 55MB/s)으로 부하 반응을 검증
