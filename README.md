@@ -70,7 +70,7 @@ Prometheus·Grafana로 서버 및 컨테이너 메트릭을 수집·시각화하
 ├── docker-compose.yml
 ├── nginx.conf
 └── README.md
-\`\`\`
+```
 
 ## Monitoring
 
