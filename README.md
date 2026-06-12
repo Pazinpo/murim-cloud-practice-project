@@ -2,7 +2,10 @@
 
 AWS EC2 환경에서 Nginx, FastAPI, MariaDB를 Docker Compose로 운영하고,
 Prometheus·Grafana 기반 모니터링/관제 환경을 구축하며,
-GitHub Actions 기반 CI/CD와 Terraform 기반 IaC를 적용한 인프라 실습 프로젝트입니다.
+GitHub Actions 기반 CI/CD와 Terraform 기반 IaC를 적용한 인프라 프로젝트입니다.
+
+> 이 프로젝트는 클라우드 인프라의 **구성·운영·자동화**를 직접 다루기 위한 학습 목적의 프로젝트입니다.
+> 애플리케이션(백엔드·프론트엔드)은 데모 수준이며, EC2 위에서의 **인프라 설계 · 배포 자동화 · 모니터링 · 트러블슈팅**에 집중했습니다.
 
 ## Project Overview
 
